@@ -13,16 +13,19 @@
 #include <iomanip>
 #include <string>
 
-using std::cout;
-using std::endl;
-using std::left;
-using std::ostream;
-using std::right;
-using std::setw;
-using std::string;
+using namespace std;
 
-// ===================== Public interface =====================
+// PUBLIC INTERFACE
 
+//******************************************************************************
+// This function resets the rv32i object and the register file. 
+//
+// Parameters:
+//   None.
+//
+// Return value:
+//   None
+//******************************************************************************
 void rv32i_hart::reset()
 {
     pc = 0;
@@ -32,13 +35,32 @@ void rv32i_hart::reset()
     insn_counter = 0;
 }
 
-void rv32i_hart::dump(const std::string &hdr) const
+//******************************************************************************
+// This function prints the complete state of the hart
+// Parameters:
+//   hdr - A string printed at the beginning of each output line
+//
+// Return value:
+//   None. Output is written directly to std::cout.
+//******************************************************************************
+void rv32i_hart::dump(const string &hdr) const
 {
     regs.dump(hdr);
     cout << hdr << " pc " << hex::to_hex32(pc) << endl;
 }
 
-void rv32i_hart::tick(const std::string &hdr)
+//******************************************************************************
+// This function simulates a single CPU cycle. It tells the simulator to execute an
+// instruction
+//
+// Parameters:
+//   hdr - A string printed at the start of each trace line when register or
+//         instruction logging is enabled
+//
+// Return value:
+//   None
+//******************************************************************************
+void rv32i_hart::tick(const string &hdr)
 {
     if (halt)
         return;
@@ -46,16 +68,12 @@ void rv32i_hart::tick(const std::string &hdr)
     if (show_registers)
         dump(hdr);    
 
-    // PC must be word-aligned
     if (pc & 0x3)
     {
         halt = true;
         halt_reason = "PC alignment error";
         return;
     }
-
-    //if (show_registers)
-    //    dump(hdr);
 
     uint32_t cur_pc = pc;
     uint32_t insn   = mem.get32(cur_pc);
@@ -77,11 +95,21 @@ void rv32i_hart::tick(const std::string &hdr)
         cout << endl;
 }
 
-// ===================== Core executor =====================
 
-void rv32i_hart::exec(uint32_t insn, std::ostream *pos)
+//******************************************************************************
+// This function will execute the given RV32I instruction by making use of the get_xxx() 
+// methods to extract the needed instruction fields to decode the instruction and invoke
+// the associated exec_xxx() helper function by using the same sort of switch-logic from version 2
+//
+// Parameters:
+//   insn - The 32-bit instruction fetched from memory.
+//   pos  - Pointer to an output stream used to print trace information.
+//
+// Return value:
+//   None
+//******************************************************************************
+void rv32i_hart::exec(uint32_t insn, ostream *pos)
 {
-    // If we’re tracing, print the disassembled instruction text first
     if (pos)
     {
         string s = rv32i_decode::decode(pc, insn);
@@ -232,15 +260,42 @@ void rv32i_hart::exec(uint32_t insn, std::ostream *pos)
     }
 }
 
-void rv32i_hart::exec_illegal_insn(uint32_t /*insn*/, std::ostream * /*pos*/)
+//******************************************************************************
+// This function handles illegal or unimplemented instructions
+// Parameters:
+//   insn - The 32-bit illegal instruction that triggered the error.
+//   pos  - Optional pointer to an output stream for printing the error
+//          message
+//
+// Return value:
+//   None
+//******************************************************************************
+void rv32i_hart::exec_illegal_insn(uint32_t /*insn*/, ostream * /*pos*/)
 {
     halt = true;
     halt_reason = "Illegal instruction";
 }
 
-// ===================== U-type =====================
+//******************************************************************************
+// HELPER FUNCTIONS
+//******************************************************************************
 
-void rv32i_hart::exec_lui(uint32_t insn, std::ostream *pos)
+//******************************************************************************
+// U-TYPE
+// These functions implement the RV32I U-type (upper-immediate) instructions,
+// including LUI and AUIPC. They extract the 20-bit U-immediate, shift or add
+// it to the PC as required, and write the result into register rd.
+// 
+// Parameters:
+//   insn - the 32-bit encoded instruction being executed
+//   pos  - optional ostream used to print execution trace comments; if nullptr,
+//          no trace output is produced
+//
+// Return value:
+//   None
+//******************************************************************************
+
+void rv32i_hart::exec_lui(uint32_t insn, ostream *pos)
 {
     uint32_t rd    = get_rd(insn);
     int32_t imm_u  = get_imm_u(insn);   // << 12 already
@@ -256,7 +311,7 @@ void rv32i_hart::exec_lui(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_auipc(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_auipc(uint32_t insn, ostream *pos)
 {
     uint32_t rd       = get_rd(insn);
     uint32_t pc_before = pc;
@@ -275,9 +330,21 @@ void rv32i_hart::exec_auipc(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-// ===================== J-type =====================
+//******************************************************************************
+// J-TYPE
+// These functions implement the jump instructions JAL and JALR. They
+// compute a new PC from a sign-extended immediate (and optionally rs1),
+// write the return address into rd, and perform the jump
+// 
+// Parameters:
+//   insn - the 32-bit encoded instruction being executed
+//   pos  - optional ostream to print trace comments, or nullptr for no output
+//
+// Return value:
+//   None. These functions modify the destination register and update the PC.
+//******************************************************************************
 
-void rv32i_hart::exec_jal(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_jal(uint32_t insn, ostream *pos)
 {
     uint32_t rd        = get_rd(insn);
     uint32_t pc_before = pc;
@@ -298,7 +365,7 @@ void rv32i_hart::exec_jal(uint32_t insn, std::ostream *pos)
     pc = target;
 }
 
-void rv32i_hart::exec_jalr(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_jalr(uint32_t insn, ostream *pos)
 {
     uint32_t rd        = get_rd(insn);
     uint32_t rs1       = get_rs1(insn);
@@ -323,9 +390,23 @@ void rv32i_hart::exec_jalr(uint32_t insn, std::ostream *pos)
     pc = target;
 }
 
-// ===================== Branch helper =====================
+//******************************************************************************
+// This function constructs and returns a formatted textual comment describing
+// the behavior of a branch instruction.
 
-static void branch_comment(std::ostream *pos,
+// Parameters:
+//   rs1_val      - The 32-bit value of the rs1 register used in the branch.
+//   rs2_val      - The 32-bit value of the rs2 register used in the branch.
+//   offset       - The signed, 32-bit branch offset computed from the
+//                  instruction’s immediate field.
+//   take_branch  - Boolean indicating whether the branch condition evaluated
+//                  true (branch taken) or false (branch not taken).
+//
+// Return value:
+//   A string describing the branch decision and the effect on the program counter.
+//******************************************************************************
+
+static void branch_comment(ostream *pos,
                            const char *op,
                            bool is_unsigned,
                            uint32_t pc_before,
@@ -350,9 +431,22 @@ static void branch_comment(std::ostream *pos,
          << hex::to_hex0x32(take ? target : fallthrough);
 }
 
-// ===================== B-type (branches) =====================
+//******************************************************************************
+// B-TYPE
+// These functions implement the conditional branch instructions. They
+// evaluate the branch condition using rs1 and rs2, compute the sign-extended
+// branch offset, and either add the offset to the PC (branch taken) or advance
+// to the next sequential instruction.
+// 
+// Parameters:
+//   insn - the 32-bit encoded instruction being executed
+//   pos  - optional ostream for printing execution trace comments
+//
+// Return value:
+//   None
+//******************************************************************************
 
-void rv32i_hart::exec_beq(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_beq(uint32_t insn, ostream *pos)
 {
     uint32_t rs1       = get_rs1(insn);
     uint32_t rs2       = get_rs2(insn);
@@ -372,7 +466,7 @@ void rv32i_hart::exec_beq(uint32_t insn, std::ostream *pos)
               : pc_before + 4;
 }
 
-void rv32i_hart::exec_bne(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_bne(uint32_t insn, ostream *pos)
 {
     uint32_t rs1       = get_rs1(insn);
     uint32_t rs2       = get_rs2(insn);
@@ -392,7 +486,7 @@ void rv32i_hart::exec_bne(uint32_t insn, std::ostream *pos)
               : pc_before + 4;
 }
 
-void rv32i_hart::exec_blt(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_blt(uint32_t insn, ostream *pos)
 {
     uint32_t rs1       = get_rs1(insn);
     uint32_t rs2       = get_rs2(insn);
@@ -412,7 +506,7 @@ void rv32i_hart::exec_blt(uint32_t insn, std::ostream *pos)
               : pc_before + 4;
 }
 
-void rv32i_hart::exec_bge(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_bge(uint32_t insn, ostream *pos)
 {
     uint32_t rs1       = get_rs1(insn);
     uint32_t rs2       = get_rs2(insn);
@@ -432,7 +526,7 @@ void rv32i_hart::exec_bge(uint32_t insn, std::ostream *pos)
               : pc_before + 4;
 }
 
-void rv32i_hart::exec_bltu(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_bltu(uint32_t insn, ostream *pos)
 {
     uint32_t rs1       = get_rs1(insn);
     uint32_t rs2       = get_rs2(insn);
@@ -449,7 +543,7 @@ void rv32i_hart::exec_bltu(uint32_t insn, std::ostream *pos)
               : pc_before + 4;
 }
 
-void rv32i_hart::exec_bgeu(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_bgeu(uint32_t insn, ostream *pos)
 {
     uint32_t rs1       = get_rs1(insn);
     uint32_t rs2       = get_rs2(insn);
@@ -466,9 +560,22 @@ void rv32i_hart::exec_bgeu(uint32_t insn, std::ostream *pos)
               : pc_before + 4;
 }
 
-// ===================== I-type loads =====================
+//******************************************************************************
+// I-TYPE
+// These functions implement the load instructions, which compute an
+// effective address as rs1 + imm, read memory at that address, optionally
+// apply sign or zero extension depending on instruction type, and write the
+// resulting value into rd.
+// 
+// Parameters:
+//   insn - the 32-bit load instruction to execute
+//   pos  - optional ostream for writing formatted trace comments
+//
+// Return value:
+//   None
+//******************************************************************************
 
-void rv32i_hart::exec_lb(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_lb(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t rs1  = get_rs1(insn);
@@ -490,7 +597,7 @@ void rv32i_hart::exec_lb(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_lh(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_lh(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t rs1  = get_rs1(insn);
@@ -512,7 +619,7 @@ void rv32i_hart::exec_lh(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_lw(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_lw(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t rs1  = get_rs1(insn);
@@ -534,7 +641,7 @@ void rv32i_hart::exec_lw(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_lbu(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_lbu(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t rs1  = get_rs1(insn);
@@ -557,7 +664,7 @@ void rv32i_hart::exec_lbu(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_lhu(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_lhu(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t rs1  = get_rs1(insn);
@@ -580,9 +687,22 @@ void rv32i_hart::exec_lhu(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-// ===================== S-type stores =====================
+//******************************************************************************
+// S-TYPE
+// These functions implement the store instructions SB, SH, and SW. They
+// compute an address from rs1 + imm, retrieve the source value from
+// rs2, and write 8, 16, or 32 bits into simulated memory at the computed
+// address.
+// 
+// Parameters:
+//   insn - the 32-bit store instruction being executed
+//   pos  - optional ostream for trace output
+//
+// Return value:
+//   None
+//******************************************************************************
 
-void rv32i_hart::exec_sb(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_sb(uint32_t insn, ostream *pos)
 {
     uint32_t rs1  = get_rs1(insn);
     uint32_t rs2  = get_rs2(insn);
@@ -603,7 +723,7 @@ void rv32i_hart::exec_sb(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_sh(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_sh(uint32_t insn, ostream *pos)
 {
     uint32_t rs1  = get_rs1(insn);
     uint32_t rs2  = get_rs2(insn);
@@ -624,7 +744,7 @@ void rv32i_hart::exec_sh(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_sw(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_sw(uint32_t insn, ostream *pos)
 {
     uint32_t rs1  = get_rs1(insn);
     uint32_t rs2  = get_rs2(insn);
@@ -645,9 +765,21 @@ void rv32i_hart::exec_sw(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-// ===================== I-type ALU =====================
+//******************************************************************************
+// I-TYPE ALU
+// These functions implement the immediate arithmetic and logical
+// instructions. They compute a result using rs1 and a sign-extended immediate
+// (or shift amount), then store the result into rd.
+// 
+// Parameters:
+//   insn - the 32-bit ALU-immediate instruction
+//   pos  - optional ostream for trace comments
+//
+// Return value:
+//   None
+//******************************************************************************
 
-void rv32i_hart::exec_addi(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_addi(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t rs1  = get_rs1(insn);
@@ -668,7 +800,7 @@ void rv32i_hart::exec_addi(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_slti(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_slti(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t rs1  = get_rs1(insn);
@@ -691,7 +823,7 @@ void rv32i_hart::exec_slti(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_sltiu(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_sltiu(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t rs1  = get_rs1(insn);
@@ -715,7 +847,7 @@ void rv32i_hart::exec_sltiu(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_xori(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_xori(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t rs1  = get_rs1(insn);
@@ -737,7 +869,7 @@ void rv32i_hart::exec_xori(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_ori(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_ori(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t rs1  = get_rs1(insn);
@@ -759,7 +891,7 @@ void rv32i_hart::exec_ori(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_andi(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_andi(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t rs1  = get_rs1(insn);
@@ -781,7 +913,7 @@ void rv32i_hart::exec_andi(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_slli(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_slli(uint32_t insn, ostream *pos)
 {
     uint32_t rd    = get_rd(insn);
     uint32_t rs1   = get_rs1(insn);
@@ -803,7 +935,7 @@ void rv32i_hart::exec_slli(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_srli(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_srli(uint32_t insn, ostream *pos)
 {
     uint32_t rd    = get_rd(insn);
     uint32_t rs1   = get_rs1(insn);
@@ -825,7 +957,7 @@ void rv32i_hart::exec_srli(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_srai(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_srai(uint32_t insn, ostream *pos)
 {
     uint32_t rd    = get_rd(insn);
     uint32_t rs1   = get_rs1(insn);
@@ -847,9 +979,21 @@ void rv32i_hart::exec_srai(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-// ===================== R-type ALU =====================
+//******************************************************************************
+// R-TYPE ALU
+// These functions implement the register-to-register ALU instructions,
+// performing arithmetic or logical operations using rs1 and rs2 and writing
+// the result into rd.
+// 
+// Parameters:
+//   insn - the 32-bit R-type instruction being executed
+//   pos  - optional ostream for trace output
+//
+// Return value:
+//   None
+//******************************************************************************
 
-void rv32i_hart::exec_add(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_add(uint32_t insn, ostream *pos)
 {
     uint32_t rd  = get_rd(insn);
     uint32_t rs1 = get_rs1(insn);
@@ -871,7 +1015,7 @@ void rv32i_hart::exec_add(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_sub(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_sub(uint32_t insn, ostream *pos)
 {
     uint32_t rd  = get_rd(insn);
     uint32_t rs1 = get_rs1(insn);
@@ -893,7 +1037,7 @@ void rv32i_hart::exec_sub(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_sll(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_sll(uint32_t insn, ostream *pos)
 {
     uint32_t rd  = get_rd(insn);
     uint32_t rs1 = get_rs1(insn);
@@ -915,7 +1059,7 @@ void rv32i_hart::exec_sll(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_slt(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_slt(uint32_t insn, ostream *pos)
 {
     uint32_t rd  = get_rd(insn);
     uint32_t rs1 = get_rs1(insn);
@@ -939,7 +1083,7 @@ void rv32i_hart::exec_slt(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_sltu(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_sltu(uint32_t insn, ostream *pos)
 {
     uint32_t rd  = get_rd(insn);
     uint32_t rs1 = get_rs1(insn);
@@ -963,7 +1107,7 @@ void rv32i_hart::exec_sltu(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_xor(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_xor(uint32_t insn, ostream *pos)
 {
     uint32_t rd  = get_rd(insn);
     uint32_t rs1 = get_rs1(insn);
@@ -985,7 +1129,7 @@ void rv32i_hart::exec_xor(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_srl(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_srl(uint32_t insn, ostream *pos)
 {
     uint32_t rd  = get_rd(insn);
     uint32_t rs1 = get_rs1(insn);
@@ -1007,7 +1151,7 @@ void rv32i_hart::exec_srl(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_sra(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_sra(uint32_t insn, ostream *pos)
 {
     uint32_t rd  = get_rd(insn);
     uint32_t rs1 = get_rs1(insn);
@@ -1029,7 +1173,7 @@ void rv32i_hart::exec_sra(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_or(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_or(uint32_t insn, ostream *pos)
 {
     uint32_t rd  = get_rd(insn);
     uint32_t rs1 = get_rs1(insn);
@@ -1051,7 +1195,7 @@ void rv32i_hart::exec_or(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_and(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_and(uint32_t insn, ostream *pos)
 {
     uint32_t rd  = get_rd(insn);
     uint32_t rs1 = get_rs1(insn);
@@ -1073,9 +1217,21 @@ void rv32i_hart::exec_and(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-// ===================== SYSTEM / CSR =====================
+//******************************************************************************
+// SYSTEM
+// These functions implement the SYSTEM instructions, including ECALL,
+// EBREAK, and the CSR (Control and Status Register) read/modify/write family.
+// 
+// Parameters:
+//   insn - the 32-bit SYSTEM or CSR instruction to execute
+//   pos  - optional ostream for printing execution trace comments
+//
+// Return value:
+//   None
+//******************************************************************************
 
-void rv32i_hart::exec_system(uint32_t insn, std::ostream *pos)
+
+void rv32i_hart::exec_system(uint32_t insn, ostream *pos)
 {
     uint32_t f3 = get_funct3(insn);
 
@@ -1104,7 +1260,7 @@ void rv32i_hart::exec_system(uint32_t insn, std::ostream *pos)
     }
 }
 
-void rv32i_hart::exec_ecall(uint32_t, std::ostream *pos)
+void rv32i_hart::exec_ecall(uint32_t, ostream *pos)
 {
     if (pos)
         *pos << "// ECALL";
@@ -1112,7 +1268,7 @@ void rv32i_hart::exec_ecall(uint32_t, std::ostream *pos)
     halt_reason = "ECALL instruction";
 }
 
-void rv32i_hart::exec_ebreak(uint32_t, std::ostream *pos)
+void rv32i_hart::exec_ebreak(uint32_t, ostream *pos)
 {
     if (pos)
         *pos << "// HALT";
@@ -1120,12 +1276,11 @@ void rv32i_hart::exec_ebreak(uint32_t, std::ostream *pos)
     halt_reason = "EBREAK instruction";
 }
 
-// For this assignment we can treat CSR registers as reading as 0 and ignoring writes.
-void rv32i_hart::exec_csrrw(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_csrrw(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t rs1  = get_rs1(insn);
-    uint32_t csr  = get_imm_i(insn) & 0xfff; // really 12 bits
+    uint32_t csr  = get_imm_i(insn) & 0xfff;
 
     uint32_t rs1_val = static_cast<uint32_t>(regs.get(rs1));
 
@@ -1134,32 +1289,15 @@ void rv32i_hart::exec_csrrw(uint32_t insn, std::ostream *pos)
         *pos << "// x" << rd << " = 0";
     }
 
-    // read old CSR (0) into rd
     regs.set(rd, 0);
-    // write rs1_val into CSR (ignored)
+
     (void)csr;
     (void)rs1_val;
 
     pc += 4;
 }
 
-void rv32i_hart::exec_csrrs(uint32_t insn, std::ostream *pos)
-{
-    uint32_t rd   = get_rd(insn);
-    uint32_t csr  = get_imm_i(insn) & 0xfff;
-
-    if (pos)
-    {
-        *pos << "// x" << rd << " = 0";
-    }
-
-    // read old CSR (0) into rd
-    regs.set(rd, 0);
-    (void)csr;
-    pc += 4;
-}
-
-void rv32i_hart::exec_csrrc(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_csrrs(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t csr  = get_imm_i(insn) & 0xfff;
@@ -1174,7 +1312,7 @@ void rv32i_hart::exec_csrrc(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_csrrwi(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_csrrc(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t csr  = get_imm_i(insn) & 0xfff;
@@ -1189,7 +1327,7 @@ void rv32i_hart::exec_csrrwi(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_csrrsi(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_csrrwi(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t csr  = get_imm_i(insn) & 0xfff;
@@ -1204,7 +1342,22 @@ void rv32i_hart::exec_csrrsi(uint32_t insn, std::ostream *pos)
     pc += 4;
 }
 
-void rv32i_hart::exec_csrrci(uint32_t insn, std::ostream *pos)
+void rv32i_hart::exec_csrrsi(uint32_t insn, ostream *pos)
+{
+    uint32_t rd   = get_rd(insn);
+    uint32_t csr  = get_imm_i(insn) & 0xfff;
+
+    if (pos)
+    {
+        *pos << "// x" << rd << " = 0";
+    }
+
+    regs.set(rd, 0);
+    (void)csr;
+    pc += 4;
+}
+
+void rv32i_hart::exec_csrrci(uint32_t insn, ostream *pos)
 {
     uint32_t rd   = get_rd(insn);
     uint32_t csr  = get_imm_i(insn) & 0xfff;

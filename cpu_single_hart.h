@@ -14,18 +14,13 @@
 #include "rv32i_hart.h"
 #include "memory.h"
 
-// A CPU that contains a single RV32I hart.
+//******************************************************************************
+// This is a subclass of rv32i_hart that is used to represent a CPU with a single hart.
+//******************************************************************************
 class cpu_single_hart : public rv32i_hart
 {
 public:
-    // Pass the memory reference up to the base-class constructor
-    cpu_single_hart(memory &mem)
-        : rv32i_hart(mem)
-    {
-    }
+    cpu_single_hart(memory &mem) : rv32i_hart(mem) {}
 
-    // Run the hart until halted or exec_limit is reached.
-    // If exec_limit == 0: run until is_halted() is true.
-    // If exec_limit != 0: run until is_halted() or exec_limit instructions executed.
     void run(uint64_t exec_limit);
 };

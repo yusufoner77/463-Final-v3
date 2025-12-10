@@ -22,7 +22,6 @@
 
 using namespace std;
 
-// Disassemble all 32-bit words in memory
 static void disassemble(const memory &mem)
 {
     uint32_t size = mem.get_size();
@@ -53,8 +52,8 @@ static void usage()
 
 int main(int argc, char **argv)
 {
-    uint32_t memory_limit = 0x100;   // default memory size
-    uint64_t exec_limit   = 0;       // 0 means "no limit"
+    uint32_t memory_limit = 0x100;
+    uint64_t exec_limit   = 0;
 
     bool opt_disassemble  = false;   // -d
     bool opt_show_insn    = false;   // -i
@@ -62,15 +61,14 @@ int main(int argc, char **argv)
     bool opt_final_dump   = false;   // -z
 
     int opt;
-    // options: m: (arg), d, i, r, z, l: (arg)
+
     while ((opt = getopt(argc, argv, "m:dirzl:")) != -1)
     {
         switch (opt)
         {
             case 'm':
             {
-                // memory size is given in hex
-                std::istringstream iss(optarg);
+                istringstream iss(optarg);
                 iss >> std::hex >> memory_limit;
                 if (!iss)
                 {
@@ -98,8 +96,8 @@ int main(int argc, char **argv)
 
             case 'l':
             {
-                std::istringstream iss(optarg);
-                iss >> exec_limit;   // decimal
+                istringstream iss(optarg);
+                iss >> exec_limit;
                 if (!iss)
                 {
                     cerr << "Bad -l value: " << optarg << endl;
@@ -114,20 +112,17 @@ int main(int argc, char **argv)
     }
 
     if (optind >= argc)
-        usage();    // missing filename
+        usage();
 
     const char *filename = argv[optind];
 
-    // Create and load memory
     memory mem(memory_limit);
     if (!mem.load_file(filename))
         usage();
 
-    // Optional disassembly before running
     if (opt_disassemble)
         disassemble(mem);
 
-    // Create CPU with a single hart and run the program
     cpu_single_hart cpu(mem);
     cpu.reset();
     cpu.set_mhartid(0);
@@ -136,7 +131,6 @@ int main(int argc, char **argv)
 
     cpu.run(exec_limit);
 
-    // Optional final dumps
     if (opt_final_dump)
     {
         cpu.dump("");

@@ -14,6 +14,13 @@
 using std::cout;
 using std::endl;
 
+//******************************************************************************
+// This function runs the CPU simulation for a single hart. It repeatedly calls
+// tick() to execute instructions until halt or limit reached
+// Parameters:
+//   exec_limit — maximum number of instructions to execute
+// Return value: None
+//******************************************************************************
 void cpu_single_hart::run(uint64_t exec_limit)
 {
     regs.set(2, static_cast<int32_t>(mem.get_size()));
@@ -30,7 +37,7 @@ void cpu_single_hart::run(uint64_t exec_limit)
     }
 
     if (is_halted())
-        std::cout << "Execution terminated. Reason: "
+        cout << "Execution terminated. Reason: "
                   << get_halt_reason() << "\n";
                   
     cout << get_insn_counter() << " instructions executed" << endl;
